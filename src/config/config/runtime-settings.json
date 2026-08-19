@@ -1,0 +1,11 @@
+{
+  "pricing": {
+    "exchangeRate": 180000,
+    "priceMultiplier": 1.47,
+    "shippingRateUsdPerKg": 50
+  },
+  "meta": {
+    "updatedAt": "2026-07-29T12:56:38.992Z",
+    "updatedBy": "admin"
+  }
+}

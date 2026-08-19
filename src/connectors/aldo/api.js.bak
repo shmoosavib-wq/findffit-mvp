@@ -1,0 +1,156 @@
+const { GET_PRODUCTS_QUERY } = require("./queries");
+const { GET_PRODUCT_QUERY } = require("./productQuery");
+const { mapAldoProducts, mapAldoProduct } = require("./mapper");
+
+const ALDO_GRAPHQL_URL = "https://www.aldoshoes.com/api/graphql";
+const MAX_PAGES = 100;
+
+async function fetchAldoGraphQL(query, variables = {}) {
+    const response = await fetch(
+        ALDO_GRAPHQL_URL,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json"
+            },
+            body: JSON.stringify({
+                query,
+                variables
+            })
+        }
+    );
+
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`ALDO GraphQL HTTP ${response.status}: ${text}`);
+    }
+
+    const json = await response.json();
+
+    if (json.errors?.length) {
+        throw new Error(`ALDO GraphQL Errors: ${JSON.stringify(json.errors)}`);
+    }
+
+    return json.data;
+}
+
+async function getAldoProducts() {
+    const allNodes = [];
+    let after = null;
+    let hasNextPage = true;
+    let pageCount = 0;
+
+    while (hasNextPage && pageCount < MAX_PAGES) {
+        const data = await fetchAldoGraphQL(
+            GET_PRODUCTS_QUERY,
+            {
+                first: 100,
+                query: "tag:sale",
+                after
+            }
+        );
+
+        const edges = data?.products?.edges || [];
+        allNodes.push(...edges.map(edge => edge.node));
+
+        const pageInfo = data?.products?.pageInfo;
+        hasNextPage = Boolean(pageInfo?.hasNextPage);
+        after = pageInfo?.endCursor || null;
+        pageCount++;
+    }
+
+    console.log("ALDO PRODUCTS FETCHED", {
+        total: allNodes.length,
+        pages: pageCount
+    });
+
+    return mapAldoProducts(allNodes);
+}
+
+async function getAldoProduct(productId) {
+    if (!productId) return null;
+
+    const data = await fetchAldoGraphQL(
+        GET_PRODUCT_QUERY,
+        { id: productId }
+    );
+
+    const product = data?.product || data?.node || data?.productByHandle || null;
+    if (!product) return null;
+
+    return mapAldoProduct(product);
+}
+
+function normalizeStoreCategory(value = "") {
+    const text = String(value).toLowerCase().trim();
+    if (!text) return null;
+
+    if (text.includes("shoe") || text.includes("boot") || text.includes("heel") || text.includes("sandal") || text.includes("sneaker") || text.includes("loafer") || text.includes("flat") || text.includes("footwear")) {
+        return "کفش";
+    }
+    if (text.includes("bag") || text.includes("handbag") || text.includes("wallet") || text.includes("purse") || text.includes("clutch") || text.includes("tote")) {
+        return "کیف";
+    }
+    if (text.includes("access") || text.includes("belt") || text.includes("jewelry") || text.includes("watch") || text.includes("sunglass") || text.includes("scarf") || text.includes("hat") || text.includes("sock")) {
+        return "اکسسوری";
+    }
+    if (text.includes("clothing") || text.includes("apparel") || text.includes("shirt") || text.includes("top") || text.includes("pant") || text.includes("jacket") || text.includes("dress")) {
+        return "لباس";
+    }
+
+    return null;
+}
+
+function extractDynamicCategories(products = []) {
+    const categoriesMap = new Map();
+
+    for (const product of products) {
+        let unique = [];
+        
+        if (product.categories && Array.isArray(product.categories) && product.categories.length > 0) {
+            unique = [...new Set(product.categories)];
+        } else {
+            const sources = [];
+            if (product?.productType) sources.push(product.productType);
+            if (Array.isArray(product?.tags)) sources.push(...product.tags);
+
+            const detectedCategories = sources
+                .map(normalizeStoreCategory)
+                .filter(Boolean);
+            
+            unique = [...new Set(detectedCategories)];
+
+            // لاگ تشخیصی برای محصولاتی که هیچ دسته‌بندی‌ای برایشان پیدا نشد
+            if (unique.length === 0) {
+                console.log("UNCATEGORIZED PRODUCT FOUND:", {
+                    title: product.title,
+                    type: product.productType,
+                    tags: product.tags
+                });
+            }
+        }
+
+        for (const category of unique) {
+            if (!categoriesMap.has(category)) {
+                categoriesMap.set(category, {
+                    id: category,
+                    label: category,
+                    count: 1
+                });
+            } else {
+                categoriesMap.get(category).count++;
+            }
+        }
+    }
+
+    return Array.from(categoriesMap.values())
+        .sort((a, b) => b.count - a.count);
+}
+
+module.exports = {
+    fetchAldoGraphQL,
+    getAldoProducts,
+    getAldoProduct,
+    extractDynamicCategories
+};

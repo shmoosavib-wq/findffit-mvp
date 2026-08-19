@@ -1,0 +1,17 @@
+{
+  "name": "findfit-mvp",
+  "version": "0.1.0",
+  "description": "FindFit conversational shopping MVP with ALDO",
+  "main": "src/bot/bot.js",
+  "scripts": {
+    "start": "node src/bot/bot.js",
+    "test": "node test-aldo.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "telegraf": "^4.15.3",
+    "openai": "^4.20.0"
+  }
+}
+}
